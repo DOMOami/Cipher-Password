@@ -1,6 +1,6 @@
 # Cipher Password
 
-加密密码生成与管理工具。生成强密码 → PBKDF2 + AES-256-CTR 加密 → 本地存储 + Gmail 邮件备份 → 手机浏览器解密。
+生成强密码并且实现PC端与移动端互传。生成强密码 → PBKDF2 + AES-256-CTR 加密 → 本地存储 + Gmail 邮件备份 → 手机浏览器解密。
 
 ## 工作流程
 
@@ -94,3 +94,7 @@ python password_generator.py
 
 - Python 3.8+
 - [cryptography](https://cryptography.io/) — PBKDF2, AES-CTR
+
+## 最后的话
+
+这是我的第一个作品，如果有什么错误或者是不好的地方，希望您能指出，谢谢!
