@@ -1,0 +1,6 @@
+{
+  "sender_email": "你的邮箱@gmail.com",
+  "app_password": "Gmail应用专用密码（16位无空格）",
+  "recipient_email": "接收密码的邮箱@gmail.com",
+  "passphrase": "你和接收者约定的共享口令"
+}
