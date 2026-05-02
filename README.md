@@ -93,3 +93,6 @@ python password_generator.py
 
 - Python 3.8+
 - [cryptography](https://cryptography.io/) — PBKDF2, AES-256-GCM
+
+## 最后的话
+这是我的第一个作品，如果有什么不好的地方或者是错误亦或者是建议，希望您能指出！谢谢！
