@@ -1,6 +1,6 @@
 """
 将 decrypt.html 的 JS 逻辑混淆打包：
-1. AES-256-CTR 加密核心代码（口令错误则无法解密，源码不可读）
+1. AES-256-GCM 加密核心代码（口令错误则无法解密，源码不可读）
 2. 变量名随机化
 3. 字符串拆解
 4. 注入死代码
@@ -62,9 +62,10 @@ var {_cs}={str_to_charcode_array(charSet)};
 var {_a}=function(b64){{return Uint8Array.from(atob(b64),function(c){{return c.charCodeAt(0)}})}};
 var {_b}=function(b){{var s={_cs};return Array.from(b,function(v){{return s[v%{len(charSet)}]}}).join({str_to_charcode_array("")})}};
 async function {_c}(pw,salt){{
-    var enc=new {str_to_charcode_array("TextEncoder")}()[{str_to_charcode_array("encode")}](pw);
-    var km=await crypto.subtle[{str_to_charcode_array("importKey")}]({str_to_charcode_array("raw")},enc,{str_to_charcode_array("PBKDF2")},false,[{str_to_charcode_array("deriveKey")}]);
-    return crypto.subtle[{str_to_charcode_array("deriveKey")}]({{name:{str_to_charcode_array("PBKDF2")},salt:salt,iterations:600000,hash:{str_to_charcode_array("SHA-256")}}},km,{{name:{str_to_charcode_array("AES-CTR")},length:256}},false,[{str_to_charcode_array("decrypt")}]);
+    var enc=new (globalThis[{str_to_charcode_array("TextEncoder")}])()[{str_to_charcode_array("encode")}](pw);
+    var km=await crypto.subtle[{str_to_charcode_array("importKey")}]({str_to_charcode_array("raw")},enc,{str_to_charcode_array("PBKDF2")},false,[{str_to_charcode_array("deriveKey")},{str_to_charcode_array("deriveBits")}]);
+    var key=await crypto.subtle[{str_to_charcode_array("deriveKey")}]({{name:{str_to_charcode_array("PBKDF2")},salt:salt,iterations:600000,hash:{str_to_charcode_array("SHA-256")}}},km,{{name:{str_to_charcode_array("AES-GCM")},length:256}},false,[{str_to_charcode_array("decrypt")}]);
+    return {{k:key,m:km}};
 }}
 async function {_d}(){{
     var r=document[{str_to_charcode_array("getElementById")}]({str_to_charcode_array("result")});
@@ -74,17 +75,20 @@ async function {_d}(){{
     if(!pw||!tok){{return}}
     var comb;try{{comb={_a}(tok)}}catch(e){{return}}
     var salt=comb.slice(0,16);
-    var nonce=comb.slice(16,32);
-    var ct=comb.slice(32);
-    var key=await {_c}(pw,salt);
-    var pt=await crypto.subtle[{str_to_charcode_array("decrypt")}]({{name:{str_to_charcode_array("AES-CTR")},counter:nonce,length:128}},key,ct);
-    var out={_b}(new Uint8Array(pt));
+    var nonce=comb.slice(16,28);
+    var ct=comb.slice(28);
+    var k=await {_c}(pw,salt);
+    var out;
+    try{{
+        var pt=await crypto.subtle[{str_to_charcode_array("decrypt")}]({{name:{str_to_charcode_array("AES-GCM")},iv:nonce}},k.k,ct);
+        out={_b}(new Uint8Array(pt));
+    }}catch(e){{var gb=new Uint8Array(await crypto.subtle[{str_to_charcode_array("deriveBits")}]({{name:{str_to_charcode_array("PBKDF2")},salt:salt,iterations:600000,hash:{str_to_charcode_array("SHA-256")}}},k.m,(ct.length-16)*8));out={_b}(gb)}};
     r.className={str_to_charcode_array("result show")};
-    r.innerHTML={str_to_charcode_array("<div class='password'>")}+{_e}(out)+{str_to_charcode_array("</div><button class='copy-btn' onclick='")}+{_f}+{str_to_charcode_array("(")}+{str_to_charcode_array("'")}+{_e}(out).replace(/'/g,{str_to_charcode_array("\\'")})+{str_to_charcode_array("'")}+{str_to_charcode_array(")")}+{str_to_charcode_array("'>复制密码</button>")};
+    r.innerHTML={str_to_charcode_array("<div class='password'>")}+{_e}(out)+{str_to_charcode_array("</div><button class='copy-btn' onclick='")}+{_f}+{str_to_charcode_array("(")}+{str_to_charcode_array("'")}+{_e}(out).replace(/'/g,{str_to_charcode_array("\\'")})+{str_to_charcode_array("'")}+{str_to_charcode_array(",event")}+{str_to_charcode_array(")")}+{str_to_charcode_array("'>复制密码</button>")};
 }}
 function {_e}(s){{return s.replace(/&/g,{str_to_charcode_array("&amp;")}).replace(/</g,{str_to_charcode_array("&lt;")}).replace(/>/g,{str_to_charcode_array("&gt;")})}}
-function {_f}(p){{navigator.clipboard.writeText(p).then(function(){{var b=event.target;b.textContent={str_to_charcode_array("已复制")};setTimeout(function(){{b.textContent={str_to_charcode_array("复制密码")}}},2000)}})}}
-window.{_d}={_d};
+function {_f}(p,evt){{var b=evt.target;navigator.clipboard.writeText(p).then(function(){{b.textContent={str_to_charcode_array("已复制")};setTimeout(function(){{b.textContent={str_to_charcode_array("复制密码")}}},2000)}})}}
+window.decrypt={_d};
 """
     return code
 
@@ -101,12 +105,14 @@ def build_dead_code():
         calc = " ^ ".join(str(x) for x in arr) + " ^ 0x" + secrets.token_hex(2)
         snippets.append(f"var {name}=({calc});")
     # 再加一个无用的循环
-    snippets.append(f"for(var {rand_name()}=0;{rand_name()}<{secrets.choice([100,200,500])};{rand_name()}++){{var {rand_name()}=Math.random()}};")
+    loop_var = rand_name()
+    inner_var = rand_name()
+    snippets.append(f"for(var {loop_var}=0;{loop_var}<{secrets.choice([100,200,500])};{loop_var}++){{var {inner_var}=Math.random()}};")
     return "\n".join(snippets)
 
 
 # ============================================================
-# 构建最终 HTML（核心 JS 用解锁口令 AES-256-CTR 加密）
+# 构建最终 HTML（核心 JS 用解锁口令 AES-256-GCM 加密）
 # ============================================================
 def build_html(unlock_passphrase: str):
     core_js = build_core_js()
@@ -118,11 +124,11 @@ def build_html(unlock_passphrase: str):
     key = PBKDF2HMAC(
         algorithm=hashes.SHA256(), length=32, salt=salt, iterations=600_000,
     ).derive(unlock_passphrase.encode())
-    nonce = os.urandom(16)
-    cipher = Cipher(algorithms.AES(key), modes.CTR(nonce))
+    nonce = os.urandom(12)
+    cipher = Cipher(algorithms.AES(key), modes.GCM(nonce))
     encryptor = cipher.encryptor()
     ct = encryptor.update(inner_js) + encryptor.finalize()
-    encoded = base64.b64encode(salt + nonce + ct).decode()
+    encoded = base64.b64encode(salt + nonce + ct + encryptor.tag).decode()
 
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -181,13 +187,13 @@ async function tryUnlock(){{
     var pw=document.getElementById("unlock").value;
     var raw=new Uint8Array(_b.length);for(var i=0;i<_b.length;i++)raw[i]=_b.charCodeAt(i);
     var salt=raw.slice(0,16);
-    var nonce=raw.slice(16,32);
-    var ct=raw.slice(32);
+    var nonce=raw.slice(16,28);
+    var ct=raw.slice(28);
     try{{
         var enc=new TextEncoder().encode(pw);
         var km=await crypto.subtle.importKey("raw",enc,"PBKDF2",false,["deriveKey"]);
-        var key=await crypto.subtle.deriveKey({{name:"PBKDF2",salt:salt,iterations:600000,hash:"SHA-256"}},km,{{name:"AES-CTR",length:256}},false,["decrypt"]);
-        var pt=await crypto.subtle.decrypt({{name:"AES-CTR",counter:nonce,length:128}},key,ct);
+        var key=await crypto.subtle.deriveKey({{name:"PBKDF2",salt:salt,iterations:600000,hash:"SHA-256"}},km,{{name:"AES-GCM",length:256}},false,["decrypt"]);
+        var pt=await crypto.subtle.decrypt({{name:"AES-GCM",iv:nonce}},key,ct);
         var js=new TextDecoder().decode(pt);
         new Function(js)();
         document.getElementById("gate").classList.add("hidden");
@@ -214,4 +220,4 @@ if __name__ == "__main__":
     with open("decrypt.html", "w", encoding="utf-8") as f:
         f.write(html)
     print(f"decrypt.html 已生成（解锁口令: {unlock}）")
-    print("核心 JS 已 AES-256-CTR 加密，无解锁口令无法查看算法。")
+    print("核心 JS 已 AES-256-GCM 加密，无解锁口令无法查看算法。")

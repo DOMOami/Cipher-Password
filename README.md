@@ -1,6 +1,6 @@
 # Cipher Password
 
-生成强密码并且实现PC端与移动端互传。生成强密码 → PBKDF2 + AES-256-CTR 加密 → 本地存储 + Gmail 邮件备份 → 手机浏览器解密。
+加密密码生成与管理工具。生成强密码 → PBKDF2 + AES-256-GCM 加密 → 本地存储 + Gmail 邮件备份 → 手机浏览器解密。
 
 ## 工作流程
 
@@ -9,7 +9,7 @@
 │                                             │
 │  password_generator.py                      │
 │  生成密码 → 转为字符集索引                    │
-│  → AES-256-CTR 加密 → 存 password.txt        │
+│  → AES-256-GCM 加密 → 存 password.txt        │
 │  → 通过 Gmail SMTP 发送邮件                  │
 │  → 附件: decrypt.html (混淆加密的HTML解密器)  │
 │                                             │
@@ -67,10 +67,9 @@ python password_generator.py
 
 | 环节 | 方案 |
 |------|------|
-| 加密算法 | PBKDF2 (SHA-256, 60万次迭代) → AES-256-CTR |
-| 防御性设计 | 错误口令解密同样输出合法密码，无法通过输出格式判断口令对错 |
+| 加密算法 | PBKDF2 (SHA-256, 60万次迭代) → AES-256-GCM（认证加密） |
 | 密码发送 | 仅发送密文，明文永不出现在邮件中 |
-| decrypt.html | 核心JS经 AES-256-CTR 加密，解锁口令错误无法解密出算法 |
+| decrypt.html | 核心JS经 AES-256-GCM 加密，解锁口令错误无法解密出算法 |
 | 本地存储 | password.txt 仅存密文 |
 | 浏览器安全 | Web Crypto API，密钥不离开浏览器 |
 
@@ -93,8 +92,4 @@ python password_generator.py
 ## 依赖
 
 - Python 3.8+
-- [cryptography](https://cryptography.io/) — PBKDF2, AES-CTR
-
-## 最后的话
-
-这是我的第一个作品，如果有什么错误或者是不好的地方，希望您能指出，谢谢!
+- [cryptography](https://cryptography.io/) — PBKDF2, AES-256-GCM

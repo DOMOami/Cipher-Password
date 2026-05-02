@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import os
 import secrets
@@ -63,15 +64,15 @@ def _derive_key(passphrase, salt):
 
 
 def encrypt(plaintext, passphrase):
-    """将密码转为字符集索引后 AES-256-CTR 加密，返回 base64"""
+    """将密码转为字符集索引后 AES-256-GCM 加密，返回 base64"""
     indices = bytes(CHAR_TO_IDX[c] for c in plaintext)  # 每字符 → 0-62
     salt = os.urandom(16)
     key = _derive_key(passphrase, salt)
-    nonce = os.urandom(16)
-    cipher = Cipher(algorithms.AES(key), modes.CTR(nonce))
+    nonce = os.urandom(12)
+    cipher = Cipher(algorithms.AES(key), modes.GCM(nonce))
     encryptor = cipher.encryptor()
     ciphertext = encryptor.update(indices) + encryptor.finalize()
-    combined = salt + nonce + ciphertext
+    combined = salt + nonce + ciphertext + encryptor.tag
     return base64.b64encode(combined).decode()
 
 
@@ -79,12 +80,16 @@ def decrypt(token, passphrase):
     """解密，正确口令还原密码，错误口令输出同类字符集密码，不可区分"""
     combined = base64.b64decode(token)
     salt = combined[:16]
-    nonce = combined[16:32]
-    ciphertext = combined[32:]
+    nonce = combined[16:28]
+    tag = combined[-16:]
+    ciphertext = combined[28:-16]
     key = _derive_key(passphrase, salt)
-    cipher = Cipher(algorithms.AES(key), modes.CTR(nonce))
+    cipher = Cipher(algorithms.AES(key), modes.GCM(nonce, tag))
     decryptor = cipher.decryptor()
-    raw = decryptor.update(ciphertext) + decryptor.finalize()
+    try:
+        raw = decryptor.update(ciphertext) + decryptor.finalize()
+    except Exception:
+        raw = hashlib.shake_256(key).digest(len(ciphertext))
     return "".join(CHAR_SET[b % CHAR_COUNT] for b in raw)
 
 
@@ -126,10 +131,10 @@ def send_email(config):
 
 
 def generate_password(length=12):
-    """生成包含大小写字母、数字和感叹号的强密码，每种类型等概率出现"""
+    """生成包含大小写字母、数字和感叹号的强密码，每个字符等概率出现"""
     password = [secrets.choice(c) for c in CATEGORIES]
     for _ in range(length - len(CATEGORIES)):
-        password.append(secrets.choice(secrets.choice(CATEGORIES)))
+        password.append(secrets.choice(CHAR_SET))
     rng = SystemRandom()
     rng.shuffle(password)
     return "".join(password)
